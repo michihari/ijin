@@ -152,6 +152,7 @@
   .actions{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px}
   .actions .r{display:flex;gap:10px;align-items:center}
   .err{color:#8A2E2E;font-size:13px}
+  .ok{color:var(--ai);font-size:13px;border-left:2px solid var(--ai);padding-left:10px;line-height:1.8}
   @media (max-width:520px){.date-row{grid-template-columns:1fr auto 1fr auto 1fr auto}.date-row label.bc{grid-column:1/-1}}
   .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:8px 18px;border-radius:2px;font-size:13px;letter-spacing:.1em;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
   .toast.show{opacity:1}
@@ -186,7 +187,8 @@
 
   <section id="loginView" class="hidden login">
     <form class="card" id="authForm" novalidate>
-      <h2><small>偉人録</small>ログイン</h2>
+      <h2><small>偉人録</small><span id="authTitle">ログイン</span></h2>
+      <p class="note" id="authLead" style="margin:0;color:var(--ink-soft);font-size:14px">記録を読むにはログインが必要です。</p>
       <div class="field">
         <label for="aEmail">メールアドレス</label>
         <input type="email" id="aEmail" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false">
@@ -194,12 +196,18 @@
       <div class="field">
         <label for="aPass">パスワード</label>
         <input type="password" id="aPass" autocomplete="current-password">
+        <span class="hint hidden" id="passHint">6文字以上</span>
+      </div>
+      <div class="field hidden" id="pass2Field">
+        <label for="aPass2">パスワード（確認）</label>
+        <input type="password" id="aPass2" autocomplete="new-password">
       </div>
       <div class="err" id="authErr"></div>
+      <div class="ok hidden" id="authOk"></div>
       <button type="submit" class="btn primary" id="authSubmit">ログイン</button>
       <div class="foot">
         <button type="button" class="link" id="resetBtn">パスワードを忘れた</button>
-        <button type="button" class="link" id="authCancel">ログインせずに読む</button>
+        <button type="button" class="link" id="modeBtn">はじめての方は会員登録</button>
       </div>
     </form>
   </section>
@@ -347,6 +355,12 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   async function signIn(email, password){
     await keepSession(await authPost("token?grant_type=password", { email, password }));
   }
+  // 会員登録。確認メールが要る設定なら session は返らない
+  async function signUp(email, password){
+    const j = await authPost("signup", { email, password });
+    if (j.access_token && j.user) { await keepSession(j); return true; }
+    return false;
+  }
   async function signOut(){
     try { await fetch(`${BASE}/auth/v1/logout`, { method:"POST", headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${session.access_token}` } }); } catch {}
     session = null; await ldel(SKEY);
@@ -361,7 +375,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     });
     if ((r.status === 401 || r.status === 403) && session && retry) {
       if (await refreshSession()) return api(path, opt, false);
-      paintAuth();
+      paintAuth(); openAuth(); toast("ログインし直してください");
     }
     if (!r.ok) throw new Error((await r.text()).slice(0,160) || String(r.status));
     return r.status === 204 ? null : r.json();
@@ -384,8 +398,11 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     if (!configured) w.innerHTML = `<span>下書き（この端末のみ）</span>`;
     else if (session) w.innerHTML = (isMaster() ? `<span class="mark">マスター</span>` : "") + `<span>${esc(session.user.email)}</span>`;
     else w.innerHTML = `<span>閲覧のみ</span>`;
+    const inside = canWrite();
     $("#loginBtn").classList.toggle("hidden", !configured || !!session);
     $("#logoutBtn").classList.toggle("hidden", !session);
+    document.querySelector(".nav").classList.toggle("hidden", !inside);
+    $("#export").classList.toggle("hidden", !inside);
     $("#import").classList.toggle("hidden", !canWrite());
     $("#addBtn").classList.toggle("hidden", !canWrite());
   }
@@ -557,30 +574,62 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   $("#cancelBtn").addEventListener("click", () => dlg.close());
 
   /* ---------- ログイン ---------- */
-  let backTo = null; // ログイン後に戻る場所
-  function openAuth(){
+  let authMode = "login";
+  function setAuthMode(m){
+    authMode = m;
+    const up = m === "signup";
+    $("#authTitle").textContent = up ? "会員登録" : "ログイン";
+    $("#authLead").textContent = up ? "メールアドレスとパスワードを決めてください。" : "記録を読むにはログインが必要です。";
+    $("#authSubmit").textContent = up ? "登録する" : "ログイン";
+    $("#modeBtn").textContent = up ? "すでに会員の方はログイン" : "はじめての方は会員登録";
+    $("#pass2Field").classList.toggle("hidden", !up);
+    $("#passHint").classList.toggle("hidden", !up);
+    $("#resetBtn").classList.toggle("hidden", up);
+    $("#aPass").setAttribute("autocomplete", up ? "new-password" : "current-password");
+    $("#aPass").value = ""; $("#aPass2").value = "";
+    $("#authErr").textContent = ""; $("#authOk").classList.add("hidden");
+  }
+  function openAuth(m){
     if (!configured) return toast("接続先が未設定です。HTMLの先頭にSupabaseのURLと鍵を書いてください");
     if (dlg.open) dlg.close();
-    backTo = !$("#mixView").classList.contains("hidden") ? "mix" : scope ? scope : null;
-    $("#aPass").value = ""; $("#authErr").textContent = "";
+    if (peek.open) peek.close();
+    setAuthMode(typeof m === "string" ? m : "login");
     setView("loginView"); $("#aEmail").focus();
   }
-  function leaveAuth(){ if (backTo === "mix") showMix(); else if (backTo) showScope(backTo); else showGate(); }
-  $("#loginBtn").addEventListener("click", openAuth);
-  $("#authCancel").addEventListener("click", leaveAuth);
+  $("#modeBtn").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
+  $("#loginBtn").addEventListener("click", () => openAuth("login"));
   $("#authForm").addEventListener("submit", async ev => {
     ev.preventDefault();
     const email = $("#aEmail").value.trim(), pass = $("#aPass").value;
-    if (!email || !pass) return $("#authErr").textContent = "メールアドレスとパスワードを入れてください。";
-    $("#authSubmit").textContent = "確認中…";
+    const err = $("#authErr"), ok = $("#authOk");
+    err.textContent = ""; ok.classList.add("hidden");
+    if (!email || !pass) return err.textContent = "メールアドレスとパスワードを入れてください。";
+    const up = authMode === "signup";
+    if (up) {
+      if (pass.length < 6) return err.textContent = "パスワードは6文字以上にしてください。";
+      if (pass !== $("#aPass2").value) return err.textContent = "確認用のパスワードが一致しません。";
+    }
+    const label = $("#authSubmit").textContent;
+    $("#authSubmit").textContent = up ? "登録中…" : "確認中…";
     try {
-      await signIn(email, pass);
+      const entered = up ? await signUp(email, pass) : (await signIn(email, pass), true);
+      if (!entered) {
+        ok.textContent = `${email} 宛に確認のメールを送りました。文中のリンクを開いて登録を済ませてから、ログインしてください。`;
+        ok.classList.remove("hidden");
+        setAuthMode("login"); $("#aEmail").value = email;
+        return;
+      }
       await pull();
-      paintAuth(); leaveAuth();
-      toast(isMaster() ? "マスターとしてログインしました" : "ログインしました");
+      paintAuth(); showGate();
+      toast(isMaster() ? "マスターとしてログインしました" : up ? "ようこそ" : "ログインしました");
     } catch (e) {
-      $("#authErr").textContent = /Invalid login/i.test(e.message) ? "メールアドレスかパスワードが違います。" : e.message;
-    } finally { $("#authSubmit").textContent = "ログイン"; }
+      const m = e.message;
+      err.textContent =
+        /Invalid login/i.test(m) ? "メールアドレスかパスワードが違います。" :
+        /already registered|already exists/i.test(m) ? "このメールアドレスはすでに登録されています。" :
+        /Signups not allowed|signup is disabled/i.test(m) ? "いまは新規の会員登録を受け付けていません。" :
+        /weak|password/i.test(m) && up ? "パスワードが弱すぎます。文字を増やしてください。" : m;
+    } finally { $("#authSubmit").textContent = label; }
   });
   $("#resetBtn").addEventListener("click", async () => {
     const email = $("#aEmail").value.trim();
@@ -589,7 +638,9 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     catch (e) { $("#authErr").textContent = e.message; }
   });
   $("#logoutBtn").addEventListener("click", async () => {
-    await signOut(); paintAuth(); repaint(); toast("ログアウトしました");
+    await signOut();
+    data.entries = []; await saveLocal();
+    paintAuth(); openAuth(); toast("ログアウトしました");
   });
 
   /* ---------- 操作 ---------- */
@@ -648,15 +699,16 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     if (configured) {
       session = await lget(SKEY);
       if (session && session.expires_at < Math.floor(Date.now()/1000)) await refreshSession();
-      try { await pull(); }
-      catch { toast("記録を読み込めませんでした。この端末の控えを表示しています"); }
+      if (session) { try { await pull(); } catch { toast("記録を読み込めませんでした。この端末の控えを表示しています"); } }
+      else { data.entries = []; await saveLocal(); }
     } else {
       $("#setupNotice").classList.remove("hidden");
       $("#setupNotice").innerHTML = `いまは下書きの状態です。記録はこの端末の中だけに保存され、ログインもできません。<br>
         Supabase でプロジェクトを作り、<code>supabase-setup.sql</code> を SQL Editor で実行したうえで、このHTMLの先頭にある
         <code>SUPABASE_URL</code> と <code>SUPABASE_ANON_KEY</code> に Project URL と anon public key を書き入れてください。`;
     }
-    paintAuth(); showGate();
+    paintAuth();
+    if (configured && !session) openAuth(); else showGate();
     if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   })();
 })();
