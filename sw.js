@@ -1,5 +1,5 @@
 // 偉人録 service worker — 画面の骨組みを手元に置き、電波がなくても開けるようにする
-const CACHE = "ijin-v1";
+const CACHE = "ijin-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
