@@ -334,7 +334,7 @@
 const SUPABASE_URL = "https://ldsdlaicexbtsocqalkp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmuZcV-uEyzUO8LgLEkzvA_5cJQnxHC";
 const MASTER_EMAIL = "michihari.natori.note@gmail.com";
-const BUILD = "v11";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
+const BUILD = "v12";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
 
 (() => {
   const CATS = ["小説","俳句","哲学","詩","芸術","映画","音楽","料理","服飾","芸道","自然科学","社会科学"];
@@ -841,11 +841,25 @@ const BUILD = "v11";   // 画面右上に出ます。差し替えたのにここ
       const j = JSON.parse(await f.text());
       if (!Array.isArray(j.entries)) throw new Error("形式が違います");
       const ids = new Set(data.entries.map(e => e.id));
-      const add = j.entries.filter(e => e.id && !ids.has(e.id)).map(e => ({ ...e, owner: session?.user.id ?? null }));
-      if (configured && add.length) await sbInsert(add.map(toRow));
+      const rows = j.entries.filter(e => e.id);
+      const add = rows.filter(e => !ids.has(e.id)).map(e => ({ ...e, owner: session?.user.id ?? null }));
+      const dup = rows.filter(e => ids.has(e.id));
+      let upd = [];
+      if (dup.length && confirm(`すでに登録されている記録が${dup.length}件あります。読み込むファイルの内容で上書きしますか。\n「キャンセル」を選ぶと、新しい${add.length}件だけを足します。`)) {
+        upd = dup.filter(e => canEdit(data.entries.find(x => x.id === e.id)));
+        if (upd.length < dup.length) toast(`${dup.length - upd.length}件は、他の人が登録した記録のため上書きできません`);
+      }
+      if (configured) {
+        if (add.length) await sbInsert(add.map(toRow));
+        for (const e of upd) {
+          const old = data.entries.find(x => x.id === e.id);
+          await sbUpdate(toRow({ ...old, ...e, owner: old.owner }));
+        }
+      }
       data.entries.push(...add);
+      upd.forEach(e => { const i = data.entries.findIndex(x => x.id === e.id); data.entries[i] = { ...data.entries[i], ...e, owner: data.entries[i].owner }; });
       await saveLocal(); repaint();
-      toast(`${add.length}名を読み込みました`);
+      toast(`${add.length}件を追加${upd.length ? `、${upd.length}件を上書き` : ""}しました`);
     } catch (e) { toast("読み込めませんでした（" + e.message + "）"); }
     ev.target.value = "";
   });
