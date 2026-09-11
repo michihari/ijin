@@ -440,8 +440,9 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       if (await refreshSession()) return api(path, opt, false);
       paintAuth(); openAuth(); toast("ログインし直してください");
     }
-    if (!r.ok) throw new Error((await r.text()).slice(0,160) || String(r.status));
-    return r.status === 204 ? null : r.json();
+    const text = await r.text();
+    if (!r.ok) throw new Error(text.slice(0,160) || String(r.status));
+    try { return text ? JSON.parse(text) : null; } catch { return null; }
   }
   const toRow = e => ({ id:e.id, cat:e.cat, name:e.name, year:e.year, bc:!!e.bc, month:e.month, day:e.day,
     d_year:e.dyear ?? null, d_bc:!!e.dbc, d_month:e.dmonth ?? null, d_day:e.dday ?? null,
@@ -450,8 +451,15 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     dyear:r.d_year ?? null, dbc:!!r.d_bc, dmonth:r.d_month ?? null, dday:r.d_day ?? null,
     desc:r.note||"", owner:r.owner });
   // Supabase の返事を、直し方がわかる言葉にする
+  function where(){
+    if (location.protocol === "file:") return "ファイルを直接開いているため通信できません。公開したURLから開いてください。";
+    if (window.self !== window.top) return "プレビューの枠の中では通信が遮断されます。公開したURLから開いてください。";
+    if (location.protocol !== "https:" && location.hostname !== "localhost") return "https の場所で開いてください。";
+    return "";
+  }
   function explain(m){
     m = String(m);
+    const w = where();
     if (/schema cache|PGRST204/i.test(m)) return "表に足りない列があります。supabase-setup.sql をもう一度 SQL Editor で実行してください。";
     if (/does not exist|42P01/i.test(m)) return "ijin の表が見つかりません。supabase-setup.sql を SQL Editor で実行してください。";
     if (/permission denied for (table|relation)/i.test(m)) return "表への権限が付いていません。supabase-setup.sql の「表そのものへの権限」の部分を実行してください。";
@@ -459,12 +467,14 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     if (/ijin_cat_check/i.test(m)) return "分野の名前が表の制約と合いません。";
     if (/JWT|expired|invalid token/i.test(m)) return "ログインの期限が切れています。ログインし直してください。";
     if (/did not match the expected pattern|Load failed|Failed to fetch|NetworkError|接続不能/i.test(m))
-      return "Supabase に要求を送れませんでした。HTMLの先頭にある接続先のURLと鍵に、余分な空白や改行が混じっていないか確かめてください。";
+      return "Supabase に要求を送れませんでした。" + (w || "通信が遮断されているか、接続先のURLと鍵に余分な文字が混じっています。")
+        + "［" + m.slice(0,120) + "／" + location.protocol + "//" + location.hostname + (window.self !== window.top ? "・枠内" : "") + "］";
     if (/Invalid API key|No API key/i.test(m)) return "鍵が正しくありません。Supabase の API Keys にある公開鍵を貼り直してください。";
     return m;
   }
-  const sbUpsert = rows => api("", { method:"POST", headers:{ Prefer:"resolution=merge-duplicates,return=minimal" }, body:JSON.stringify(rows) });
-  const sbDelete = id => api(`?id=eq.${encodeURIComponent(id)}`, { method:"DELETE", headers:{ Prefer:"return=minimal" } });
+  const sbInsert = rows => api("", { method:"POST", body:JSON.stringify(rows) });
+  const sbUpdate = row  => api(`?id=eq.${encodeURIComponent(row.id)}`, { method:"PATCH", body:JSON.stringify(row) });
+  const sbDelete = id   => api(`?id=eq.${encodeURIComponent(id)}`, { method:"DELETE" });
   async function pull(){ data.entries = (await api("?select=*")).map(fromRow); await saveLocal(); }
 
   /* ---------- 並べ替え・表示 ---------- */
@@ -660,7 +670,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       dyear, dbc, dmonth, dday,
       desc:$("#fDesc").value.trim(), owner: old?.owner ?? session?.user.id ?? null };
     if (configured) {
-      try { await sbUpsert([toRow(rec)]); }
+      try { old ? await sbUpdate(toRow(rec)) : await sbInsert([toRow(rec)]); }
       catch (e2) { return err.textContent = "保存できませんでした。" + explain(e2.message); }
     }
     if (old) data.entries[data.entries.indexOf(old)] = rec; else data.entries.push(rec);
@@ -788,7 +798,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       if (!Array.isArray(j.entries)) throw new Error("形式が違います");
       const ids = new Set(data.entries.map(e => e.id));
       const add = j.entries.filter(e => e.id && !ids.has(e.id)).map(e => ({ ...e, owner: session?.user.id ?? null }));
-      if (configured && add.length) await sbUpsert(add.map(toRow));
+      if (configured && add.length) await sbInsert(add.map(toRow));
       data.entries.push(...add);
       await saveLocal(); repaint();
       toast(`${add.length}名を読み込みました`);
