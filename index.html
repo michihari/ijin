@@ -327,8 +327,10 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
 (() => {
   const CATS = ["小説","俳句","哲学","詩","芸術","映画","音楽","料理","服飾","芸道","自然科学","社会科学"];
   const KEY = "ijin:data", SKEY = "ijin:session", ALL = "__all__", HEAD_LEN = 110;
-  const configured = /^https?:\/\//.test(SUPABASE_URL) && !!SUPABASE_ANON_KEY;
-  const BASE = SUPABASE_URL.replace(/\/(rest|auth)\/v1\/?$/, "").replace(/\/+$/, "");
+  const scrub = v => String(v || "").replace(/[\s\u3000\u200b]+/g, "");
+  const URL_ = scrub(SUPABASE_URL), KEY_ = scrub(SUPABASE_ANON_KEY);
+  const configured = /^https?:\/\//.test(URL_) && !!KEY_;
+  const BASE = URL_.replace(/\/(rest|auth)\/v1\/?$/, "").replace(/\/+$/, "");
 
   let data = { entries: [], settings: { desc:"full", dir:"yoko", filters:null } };
   let session = null, scope = null, editingId = null;
@@ -350,7 +352,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   async function authPost(path, body){
     const r = await fetch(`${BASE}/auth/v1/${path}`, {
       method:"POST",
-      headers:{ apikey:SUPABASE_ANON_KEY, "Content-Type":"application/json" },
+      headers:{ apikey:KEY_, "Content-Type":"application/json" },
       body:JSON.stringify(body)
     });
     const j = await r.json().catch(() => ({}));
@@ -378,17 +380,20 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     return false;
   }
   async function signOut(){
-    try { await fetch(`${BASE}/auth/v1/logout`, { method:"POST", headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${session.access_token}` } }); } catch {}
+    try { await fetch(`${BASE}/auth/v1/logout`, { method:"POST", headers:{ apikey:KEY_, Authorization:`Bearer ${session.access_token}` } }); } catch {}
     session = null; await ldel(SKEY);
   }
 
   /* ---------- 記録の読み書き ---------- */
   async function api(path, opt = {}, retry = true){
-    const token = session?.access_token || SUPABASE_ANON_KEY;
-    const r = await fetch(`${BASE}/rest/v1/ijin${path}`, {
-      ...opt,
-      headers:{ apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${token}`, "Content-Type":"application/json", ...(opt.headers||{}) }
-    });
+    const token = session?.access_token || KEY_;
+    let r;
+    try {
+      r = await fetch(`${BASE}/rest/v1/ijin${path}`, {
+        ...opt,
+        headers:{ apikey:KEY_, Authorization:`Bearer ${token}`, "Content-Type":"application/json", ...(opt.headers||{}) }
+      });
+    } catch (e) { throw new Error("接続不能:" + e.message); }
     if ((r.status === 401 || r.status === 403) && session && retry) {
       if (await refreshSession()) return api(path, opt, false);
       paintAuth(); openAuth(); toast("ログインし直してください");
@@ -402,6 +407,19 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   const fromRow = r => ({ id:r.id, cat:r.cat, name:r.name, year:r.year, bc:!!r.bc, month:r.month, day:r.day,
     dyear:r.d_year ?? null, dbc:!!r.d_bc, dmonth:r.d_month ?? null, dday:r.d_day ?? null,
     desc:r.note||"", owner:r.owner });
+  // Supabase の返事を、直し方がわかる言葉にする
+  function explain(m){
+    m = String(m);
+    if (/schema cache|PGRST204/i.test(m)) return "表に足りない列があります。supabase-setup.sql をもう一度 SQL Editor で実行してください。";
+    if (/does not exist|42P01/i.test(m)) return "ijin の表が見つかりません。supabase-setup.sql を SQL Editor で実行してください。";
+    if (/row-level security|42501/i.test(m)) return "書き込みが許可されていません。ログインし直すか、supabase-setup.sql の権限の部分をもう一度実行してください。";
+    if (/ijin_cat_check/i.test(m)) return "分野の名前が表の制約と合いません。";
+    if (/JWT|expired|invalid token/i.test(m)) return "ログインの期限が切れています。ログインし直してください。";
+    if (/did not match the expected pattern|Load failed|Failed to fetch|NetworkError|接続不能/i.test(m))
+      return "Supabase に要求を送れませんでした。HTMLの先頭にある接続先のURLと鍵に、余分な空白や改行が混じっていないか確かめてください。";
+    if (/Invalid API key|No API key/i.test(m)) return "鍵が正しくありません。Supabase の API Keys にある公開鍵を貼り直してください。";
+    return m;
+  }
   const sbUpsert = rows => api("", { method:"POST", headers:{ Prefer:"resolution=merge-duplicates,return=minimal" }, body:JSON.stringify(rows) });
   const sbDelete = id => api(`?id=eq.${encodeURIComponent(id)}`, { method:"DELETE", headers:{ Prefer:"return=minimal" } });
   async function pull(){ data.entries = (await api("?select=*")).map(fromRow); await saveLocal(); }
@@ -595,7 +613,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       desc:$("#fDesc").value.trim(), owner: old?.owner ?? session?.user.id ?? null };
     if (configured) {
       try { await sbUpsert([toRow(rec)]); }
-      catch (e2) { return err.textContent = "保存できませんでした（" + e2.message + "）"; }
+      catch (e2) { return err.textContent = "保存できませんでした。" + explain(e2.message); }
     }
     if (old) data.entries[data.entries.indexOf(old)] = rec; else data.entries.push(rec);
     await saveLocal();
@@ -606,7 +624,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     if (!confirm(`${e.name} の記録を削除しますか？`)) return;
     if (configured) {
       try { await sbDelete(editingId); }
-      catch (err) { return $("#err").textContent = "削除できませんでした（" + err.message + "）"; }
+      catch (err) { return $("#err").textContent = "削除できませんでした。" + explain(err.message); }
     }
     data.entries = data.entries.filter(x => x.id !== editingId);
     await saveLocal(); dlg.close(); repaint(); toast("削除しました");
@@ -746,6 +764,13 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       $("#setupNotice").innerHTML = `いまは下書きの状態です。記録はこの端末の中だけに保存され、ログインもできません。<br>
         Supabase でプロジェクトを作り、<code>supabase-setup.sql</code> を SQL Editor で実行したうえで、このHTMLの先頭にある
         <code>SUPABASE_URL</code> と <code>SUPABASE_ANON_KEY</code> に Project URL と anon public key を書き入れてください。`;
+    }
+    if (configured) {
+      try { await api("?select=id&limit=1"); }
+      catch (e) {
+        $("#setupNotice").classList.remove("hidden");
+        $("#setupNotice").textContent = "Supabase に接続できていません。" + explain(e.message);
+      }
     }
     paintAuth();
     if (configured && !session) openAuth(); else showGate();
