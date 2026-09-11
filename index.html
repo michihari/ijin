@@ -343,9 +343,28 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   const canEdit = e => !configured || (!!session && (isMaster() || e.owner === session.user.id));
 
   /* ---------- この端末の控え ---------- */
-  async function lget(k){ if(!hasStore) return null; try{ const r = await window.storage.get(k,false); return r?.value ? JSON.parse(r.value) : null; }catch{ return null; } }
-  async function lset(k,v){ if(!hasStore) return; try{ await window.storage.set(k,JSON.stringify(v),false); }catch{} }
-  async function ldel(k){ if(!hasStore) return; try{ await window.storage.delete(k,false); }catch{} }
+  // 端末に残す場所。アーティファクト内では window.storage、ふつうのブラウザでは localStorage。
+  let ls = null;
+  try { localStorage.setItem("ijin:t","1"); localStorage.removeItem("ijin:t"); ls = localStorage; } catch {}
+  async function lget(k){
+    try {
+      if (hasStore) { const r = await window.storage.get(k,false); return r?.value ? JSON.parse(r.value) : null; }
+      if (ls) { const v = ls.getItem(k); return v ? JSON.parse(v) : null; }
+    } catch {}
+    return null;
+  }
+  async function lset(k,v){
+    try {
+      if (hasStore) { await window.storage.set(k,JSON.stringify(v),false); return; }
+      if (ls) ls.setItem(k, JSON.stringify(v));
+    } catch {}
+  }
+  async function ldel(k){
+    try {
+      if (hasStore) { await window.storage.delete(k,false); return; }
+      if (ls) ls.removeItem(k);
+    } catch {}
+  }
   const saveLocal = () => lset(KEY, data);
 
   /* ---------- 認証 ---------- */
@@ -363,12 +382,31 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     session = { access_token:j.access_token, refresh_token:j.refresh_token,
       expires_at: Math.floor(Date.now()/1000) + (j.expires_in || 3600) - 60,
       user: { id:j.user.id, email:j.user.email } };
+    scheduleRefresh();
     return lset(SKEY, session);
   }
   async function refreshSession(){
     if (!session) return false;
     try { await keepSession(await authPost("token?grant_type=refresh_token", { refresh_token:session.refresh_token })); return true; }
     catch { session = null; await ldel(SKEY); return false; }
+  }
+  // 期限が近づいたら黙って更新する。閉じて開き直してもログインが続く。
+  let refreshTimer = null;
+  function scheduleRefresh(){
+    clearTimeout(refreshTimer);
+    if (!session) return;
+    const wait = Math.max(30, session.expires_at - Math.floor(Date.now()/1000) - 120) * 1000;
+    refreshTimer = setTimeout(async () => {
+      if (await refreshSession()) scheduleRefresh();
+      else { paintAuth(); openAuth(); }
+    }, Math.min(wait, 2147483000));
+  }
+  async function ensureFresh(){
+    if (!session) return false;
+    if (session.expires_at > Math.floor(Date.now()/1000) + 60) return true;
+    const ok = await refreshSession();
+    if (ok) scheduleRefresh();
+    return ok;
   }
   async function signIn(email, password){
     await keepSession(await authPost("token?grant_type=password", { email, password }));
@@ -381,7 +419,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   }
   async function signOut(){
     try { await fetch(`${BASE}/auth/v1/logout`, { method:"POST", headers:{ apikey:KEY_, Authorization:`Bearer ${session.access_token}` } }); } catch {}
-    session = null; await ldel(SKEY);
+    session = null; clearTimeout(refreshTimer); await ldel(SKEY);
   }
 
   /* ---------- 記録の読み書き ---------- */
@@ -756,7 +794,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     if (saved) { data.entries = saved.entries || []; Object.assign(data.settings, saved.settings || {}); }
     if (configured) {
       session = await lget(SKEY);
-      if (session && session.expires_at < Math.floor(Date.now()/1000)) await refreshSession();
+      if (session) { await ensureFresh(); scheduleRefresh(); }
       if (session) { try { await pull(); } catch { toast("記録を読み込めませんでした。この端末の控えを表示しています"); } }
       else { data.entries = []; await saveLocal(); }
     } else {
@@ -774,6 +812,11 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     }
     paintAuth();
     if (configured && !session) openAuth(); else showGate();
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState !== "visible" || !session) return;
+      if (await ensureFresh()) { try { await pull(); repaint(); } catch {} }
+      else { paintAuth(); openAuth(); }
+    });
     if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   })();
 })();
