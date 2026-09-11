@@ -110,6 +110,8 @@
   .entry .when{color:var(--ai);line-height:1.4}
   .entry .when .year{font-size:30px;font-weight:500;letter-spacing:.04em;display:block}
   .entry .when .md{font-size:13px;color:var(--ink-soft);display:block;letter-spacing:.06em}
+  .entry .when .died{font-size:13px;color:var(--nezu);display:block;letter-spacing:.06em;margin-top:6px}
+  .list.tate .when .died{margin:0 0 0 8px}
   .entry .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}
   .entry .who{margin:0;font-size:22px;font-weight:500;letter-spacing:.14em}
   .entry .tag{font-size:12px;letter-spacing:.14em;color:var(--ai);border:1px solid var(--ai);border-radius:2px;padding:1px 8px;line-height:1.7}
@@ -236,8 +238,8 @@
       </div>
       <span class="lbl" style="margin-left:10px">組み方</span>
       <div class="seg" role="group" aria-label="文字の組み方">
-        <button data-opt="dir" data-val="yoko">横書き・縦スクロール</button>
-        <button data-opt="dir" data-val="tate">縦書き・横スクロール</button>
+        <button data-opt="dir" data-val="yoko">横書き</button>
+        <button data-opt="dir" data-val="tate">縦書き</button>
       </div>
     </div>
     <ul class="list" id="list"></ul>
@@ -267,6 +269,19 @@
         <span class="unit">日</span>
       </div>
       <span class="hint">月日が不明なら年だけで登録できます。</span>
+    </div>
+    <div class="field">
+      <label>没年月日</label>
+      <div class="date-row">
+        <label class="bc"><input type="checkbox" id="fDBC">紀元前</label>
+        <input type="number" id="fDYear" placeholder="年" min="0">
+        <span class="unit">年</span>
+        <input type="number" id="fDMonth" placeholder="—" min="1" max="12">
+        <span class="unit">月</span>
+        <input type="number" id="fDDay" placeholder="—" min="1" max="31">
+        <span class="unit">日</span>
+      </div>
+      <span class="hint">存命の方、没年が不明な方は空のままで結構です。</span>
     </div>
     <div class="field">
       <label for="fDesc">説明文</label>
@@ -381,8 +396,12 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     if (!r.ok) throw new Error((await r.text()).slice(0,160) || String(r.status));
     return r.status === 204 ? null : r.json();
   }
-  const toRow = e => ({ id:e.id, cat:e.cat, name:e.name, year:e.year, bc:!!e.bc, month:e.month, day:e.day, note:e.desc||"", owner:e.owner ?? session?.user.id ?? null });
-  const fromRow = r => ({ id:r.id, cat:r.cat, name:r.name, year:r.year, bc:!!r.bc, month:r.month, day:r.day, desc:r.note||"", owner:r.owner });
+  const toRow = e => ({ id:e.id, cat:e.cat, name:e.name, year:e.year, bc:!!e.bc, month:e.month, day:e.day,
+    d_year:e.dyear ?? null, d_bc:!!e.dbc, d_month:e.dmonth ?? null, d_day:e.dday ?? null,
+    note:e.desc||"", owner:e.owner ?? session?.user.id ?? null });
+  const fromRow = r => ({ id:r.id, cat:r.cat, name:r.name, year:r.year, bc:!!r.bc, month:r.month, day:r.day,
+    dyear:r.d_year ?? null, dbc:!!r.d_bc, dmonth:r.d_month ?? null, dday:r.d_day ?? null,
+    desc:r.note||"", owner:r.owner });
   const sbUpsert = rows => api("", { method:"POST", headers:{ Prefer:"resolution=merge-duplicates,return=minimal" }, body:JSON.stringify(rows) });
   const sbDelete = id => api(`?id=eq.${encodeURIComponent(id)}`, { method:"DELETE", headers:{ Prefer:"return=minimal" } });
   async function pull(){ data.entries = (await api("?select=*")).map(fromRow); await saveLocal(); }
@@ -439,13 +458,16 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     list.innerHTML = items.map(e => {
       const y = (e.bc ? "紀元前" : "") + num(e.year) + "年";
       const md = e.month ? num(e.month)+"月"+(e.day ? num(e.day)+"日" : "") : "";
+      const died = e.dyear != null
+        ? "没 " + (e.dbc ? "紀元前" : "") + num(e.dyear) + "年" + (e.dmonth ? num(e.dmonth)+"月"+(e.dday ? num(e.dday)+"日" : "") : "")
+        : "";
       const clip = desc === "head" && !opened.has(e.id) && (e.desc||"").length > HEAD_LEN;
       const body = clip ? esc(e.desc.slice(0,HEAD_LEN)) + "…" : esc(e.desc||"");
       const more = desc === "head" && (e.desc||"").length > HEAD_LEN
         ? `<button class="more" data-act="toggle" data-id="${e.id}">${clip ? "続きを読む" : "冒頭のみに戻す"}</button>` : "";
       const ops = canEdit(e) ? `<div class="ops"><button data-act="edit" data-id="${e.id}">編集</button></div>` : "";
       return `<li class="entry" data-id="${e.id}">
-        <div class="when"><span class="year">${y}</span>${md?`<span class="md">${md}</span>`:""}</div>
+        <div class="when"><span class="year">${y}</span>${md?`<span class="md">${md}</span>`:""}${died?`<span class="died">${died}</span>`:""}</div>
         <div>
           <div class="head"><h3 class="who">${esc(e.name)}</h3>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}</div>
           <p class="desc">${body || '<span style="color:var(--nezu)">（説明文なし）</span>'}</p>
@@ -495,7 +517,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
         style="--x:calc(${x.toFixed(1)}% - ${size/2}px);--y:${y.toFixed(1)}%;--s:${size}px;--f:${f}px;--dur:${rnd(2.2,4.2).toFixed(2)}s;--delay:${(i*0.22 + rnd(0,.5)).toFixed(2)}s">
         <span class="ct">${esc(e.cat)}</span>
         <span class="nm">${esc(e.name)}</span>
-        <span class="yr">${e.bc ? "前" : ""}${e.year}</span>
+        <span class="yr">${e.bc ? "前" : ""}${e.year}${e.dyear != null ? "–" + (e.dbc ? "前" : "") + e.dyear : ""}</span>
       </button>`;
     }).join("");
   }
@@ -504,7 +526,9 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   function openPeek(id){
     const e = data.entries.find(x => x.id === id); if (!e) return;
     peekId = id;
-    $("#pYear").textContent = (e.bc ? "紀元前" : "") + e.year + "年" + (e.month ? e.month + "月" + (e.day ? e.day + "日" : "") : "");
+    const fmt = (bc,y,m,d) => (bc ? "紀元前" : "") + y + "年" + (m ? m + "月" + (d ? d + "日" : "") : "");
+    $("#pYear").textContent = fmt(e.bc, e.year, e.month, e.day)
+      + (e.dyear != null ? "　—　" + fmt(e.dbc, e.dyear, e.dmonth, e.dday) : "");
     $("#pCat").textContent = e.cat;
     $("#pName").textContent = e.name;
     $("#pDesc").textContent = e.desc || "（説明文なし）";
@@ -535,6 +559,10 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     $("#fYear").value = e?.year ?? "";
     $("#fMonth").value = e?.month ?? "";
     $("#fDay").value = e?.day ?? "";
+    $("#fDBC").checked = !!e?.dbc;
+    $("#fDYear").value = e?.dyear ?? "";
+    $("#fDMonth").value = e?.dmonth ?? "";
+    $("#fDDay").value = e?.dday ?? "";
     $("#fDesc").value = e?.desc || "";
     $("#err").textContent = "";
     dlg.showModal(); $("#fName").focus();
@@ -545,14 +573,25 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     const year = parseInt($("#fYear").value,10);
     const month = $("#fMonth").value ? parseInt($("#fMonth").value,10) : null;
     const day = $("#fDay").value ? parseInt($("#fDay").value,10) : null;
+    const bcv = $("#fBC").checked;
     const err = $("#err");
     if (!name) return err.textContent = "作家名を入力してください。";
     if (Number.isNaN(year) || year < 0) return err.textContent = "生まれた年を数字で入力してください。";
     if (month !== null && (month < 1 || month > 12)) return err.textContent = "月は1〜12で入力してください。";
     if (day !== null && (day < 1 || day > 31 || month === null)) return err.textContent = "日を入れる場合は月も入力してください。";
+    const dyear = $("#fDYear").value ? parseInt($("#fDYear").value,10) : null;
+    const dmonth = $("#fDMonth").value ? parseInt($("#fDMonth").value,10) : null;
+    const dday = $("#fDDay").value ? parseInt($("#fDDay").value,10) : null;
+    const dbc = $("#fDBC").checked;
+    if (dyear !== null && dyear < 0) return err.textContent = "没年を数字で入力してください。";
+    if (dyear === null && (dmonth !== null || dday !== null)) return err.textContent = "没月日を入れる場合は没年も入力してください。";
+    if (dmonth !== null && (dmonth < 1 || dmonth > 12)) return err.textContent = "没月は1〜12で入力してください。";
+    if (dday !== null && (dday < 1 || dday > 31 || dmonth === null)) return err.textContent = "没日を入れる場合は没月も入力してください。";
+    if (dyear !== null && ((dbc ? -dyear : dyear) < (bcv ? -year : year))) return err.textContent = "没年が生年より前になっています。";
     const old = editingId ? data.entries.find(x => x.id === editingId) : null;
     const rec = { id: editingId || (Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
-      cat:$("#fCat").value, name, year, bc:$("#fBC").checked, month, day,
+      cat:$("#fCat").value, name, year, bc:bcv, month, day,
+      dyear, dbc, dmonth, dday,
       desc:$("#fDesc").value.trim(), owner: old?.owner ?? session?.user.id ?? null };
     if (configured) {
       try { await sbUpsert([toRow(rec)]); }
