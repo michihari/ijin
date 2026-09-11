@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>偉人録 — 時代順の記録</title>
 <meta name="theme-color" content="#1B1A18">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -106,13 +108,7 @@
   .chip.all{border-style:dashed}
 
   .list{margin:0;padding:0;list-style:none}
-  .list.no-when .entry{grid-template-columns:1fr}
-  .entry{display:grid;grid-template-columns:128px 1fr;gap:0 28px;padding:28px 0;border-bottom:1px solid var(--rule);position:relative}
-  .entry .when{color:var(--ai);line-height:1.4}
-  .entry .when .year{font-size:30px;font-weight:500;letter-spacing:.04em;display:block}
-  .entry .when .md{font-size:13px;color:var(--ink-soft);display:block;letter-spacing:.06em}
-  .entry .when .died{font-size:13px;color:var(--nezu);display:block;letter-spacing:.06em;margin-top:6px}
-  .list.tate .when .died{margin:0 0 0 8px}
+  .entry{padding:26px 0;border-bottom:1px solid var(--rule);position:relative}
   .entry .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}
   .entry .who{margin:0;font-size:22px;font-weight:500;letter-spacing:.14em}
   .entry .life{font-size:14px;color:var(--ink-soft);letter-spacing:.04em}
@@ -124,13 +120,10 @@
   .entry .ops{margin-left:auto;padding-left:16px}
   .entry .ops button{font-size:12px;color:var(--nezu);letter-spacing:.1em;text-decoration:underline;text-underline-offset:4px}
   .list.tate .ops{margin:0;padding:0}
-  @media (max-width:560px){.entry{grid-template-columns:1fr;gap:6px}}
 
   .list.tate{writing-mode:vertical-rl;height:calc(100vh - 320px);min-height:440px;overflow-x:auto;overflow-y:hidden;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:0 8px;scrollbar-gutter:stable}
   .list.tate .entry{display:block;height:100%;padding:8px 28px;border-bottom:none;border-left:1px solid var(--rule)}
   .list.tate .entry:last-child{border-left:none}
-  .list.tate .when{display:block;margin-left:14px}
-  .list.tate .when .year{font-size:24px}
   .list.tate .num{text-combine-upright:all}
   .list.tate .head{display:block;margin:0 0 0 8px}
   .list.tate .who{display:inline-block}
@@ -171,6 +164,7 @@
   <header class="site">
     <div class="brand">
       <h1><button id="home">偉人録</button></h1>
+      <span style="font-size:11px;color:var(--nezu);letter-spacing:.1em" id="build"></span>
       <nav class="nav" aria-label="表示">
         <button id="navAll">通覧</button>
         <button id="navMix">ミックス</button>
@@ -180,6 +174,7 @@
       <span class="who-now" id="whoNow"></span>
       <button class="btn quiet" id="loginBtn">ログイン</button>
       <button class="btn quiet hidden" id="logoutBtn">ログアウト</button>
+      <button class="btn quiet" id="diagBtn">診断</button>
       <button class="btn quiet" id="export">書き出し</button>
       <button class="btn quiet hidden" id="import">読み込み</button>
       <input type="file" id="importFile" accept="application/json" class="hidden">
@@ -302,6 +297,18 @@
   </form>
 </dialog>
 
+<dialog id="diagDlg">
+  <div class="body">
+    <h3>接続の診断</h3>
+    <p class="note">読み込みと書き込みを順に試し、Supabase が返した番号と本文をそのまま出します。</p>
+    <pre id="diagOut" style="margin:0;white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.7;background:#fff;border:1px solid var(--rule);padding:14px;max-height:50vh;overflow:auto"></pre>
+    <div class="actions">
+      <button type="button" class="link" id="diagCopy">結果をコピー</button>
+      <div class="r"><button type="button" class="btn quiet" id="diagClose">閉じる</button></div>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="peekDlg" class="peek">
   <div class="body">
     <div class="meta"><span class="y" id="pYear"></span><span class="tag" id="pCat" style="font-size:12px;letter-spacing:.14em;border:1px solid var(--ai);border-radius:2px;padding:1px 8px;line-height:1.7"></span></div>
@@ -327,6 +334,7 @@
 const SUPABASE_URL = "https://ldsdlaicexbtsocqalkp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmuZcV-uEyzUO8LgLEkzvA_5cJQnxHC";
 const MASTER_EMAIL = "michihari.natori.note@gmail.com";
+const BUILD = "v11";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
 
 (() => {
   const CATS = ["小説","俳句","哲学","詩","芸術","映画","音楽","料理","服飾","芸道","自然科学","社会科学"];
@@ -518,7 +526,6 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     renderFilters();
     const list = $("#list");
     list.classList.toggle("tate", dir === "tate");
-    list.classList.toggle("no-when", scope !== ALL);
     const fils = activeFilters();
     const items = data.entries.filter(e => scope === ALL ? fils.includes(e.cat) : e.cat === scope).sort(cmp);
     if (!items.length) {
@@ -528,11 +535,6 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       return;
     }
     list.innerHTML = items.map(e => {
-      const y = (e.bc ? "紀元前" : "") + num(e.year) + "年";
-      const md = e.month ? num(e.month)+"."+(e.day ? num(e.day) : "") : "";
-      const died = e.dyear != null
-        ? "没 " + (e.dbc ? "前" : "") + num(e.dyear) + (e.dmonth ? "."+num(e.dmonth)+(e.dday ? "."+num(e.dday) : "") : "")
-        : "";
       const clip = desc === "head" && !opened.has(e.id) && (e.desc||"").length > HEAD_LEN;
       const body = clip ? esc(e.desc.slice(0,HEAD_LEN)) + "…" : esc(e.desc||"");
       const more = desc === "head" && (e.desc||"").length > HEAD_LEN
@@ -543,7 +545,6 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       const ops = canEdit(e) ? `<div class="ops"><button data-act="edit" data-id="${e.id}">編集</button></div>` : "";
 
       return `<li class="entry" data-id="${e.id}">
-        ${scope===ALL?`<div class="when"><span class="year">${y}</span>${md?`<span class="md">${md}</span>`:""}${died?`<span class="died">${died}</span>`:""}</div>`:""}
         <div>
           <div class="head"><h3 class="who">${esc(e.name)}</h3><span class="life">${life}</span>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}${ops}</div>
           <p class="desc">${body || '<span style="color:var(--nezu)">（説明文なし）</span>'}</p>
@@ -759,6 +760,49 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     paintAuth(); openAuth(); toast("ログアウトしました");
   });
 
+  /* ---------- 診断 ---------- */
+  const ddlg = $("#diagDlg");
+  async function probe(label, path, opt = {}){
+    const t0 = Date.now();
+    try {
+      const r = await fetch(`${BASE}/rest/v1/ijin${path}`, {
+        ...opt,
+        headers:{ apikey:KEY_, Authorization:`Bearer ${session?.access_token || KEY_}`, "Content-Type":"application/json", ...(opt.headers||{}) }
+      });
+      const body = (await r.text()).slice(0,200);
+      return `${r.ok ? "○" : "×"} ${label}  HTTP ${r.status} (${Date.now()-t0}ms)\n   ${body || "（本文なし）"}`;
+    } catch (e) {
+      return `× ${label}  通信そのものが失敗（CORS かネットワーク）\n   ${e.name}: ${e.message}`;
+    }
+  }
+  async function diagnose(){
+    const out = $("#diagOut");
+    const lines = [
+      `版 ${BUILD}`,
+      `場所 ${location.href}`,
+      `枠内 ${window.self !== window.top ? "はい" : "いいえ"}`,
+      `接続先 ${BASE}`,
+      `鍵 ${KEY_.slice(0,20)}…（${KEY_.length}文字）`,
+      `ログイン ${session ? session.user.email + (isMaster() ? "（マスター）" : "") : "していない"}`,
+      `常駐 ${navigator.serviceWorker?.controller ? "あり" : "なし"}`,
+      ""
+    ];
+    out.textContent = lines.join("\n") + "調べています…";
+    ddlg.showModal();
+    const id = "diag_" + Date.now().toString(36);
+    lines.push(await probe("読み込み", "?select=id&limit=1"));
+    lines.push(await probe("書き込み", "", { method:"POST", body:JSON.stringify([{
+      id, cat:"小説", name:"接続試験", year:2000, bc:false, month:null, day:null,
+      d_year:null, d_bc:false, d_month:null, d_day:null, note:"診断用。自動で消えます。",
+      owner: session?.user.id ?? null }]) }));
+    lines.push(await probe("書き換え", `?id=eq.${id}`, { method:"PATCH", body:JSON.stringify({ name:"接続試験2" }) }));
+    lines.push(await probe("削除", `?id=eq.${id}`, { method:"DELETE" }));
+    out.textContent = lines.join("\n");
+  }
+  $("#diagBtn").addEventListener("click", diagnose);
+  $("#diagClose").addEventListener("click", () => ddlg.close());
+  $("#diagCopy").addEventListener("click", () => { navigator.clipboard?.writeText($("#diagOut").textContent); toast("コピーしました"); });
+
   /* ---------- 操作 ---------- */
   $("#gateList").addEventListener("click", ev => { const b = ev.target.closest("button[data-cat]"); if (b) showScope(b.dataset.cat); });
   $("#home").addEventListener("click", showGate);
@@ -844,7 +888,13 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       if (await ensureFresh()) { try { await pull(); repaint(); } catch {} }
       else { paintAuth(); openAuth(); }
     });
-    if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+    $("#build").textContent = BUILD;
+    if ("serviceWorker" in navigator && location.protocol === "https:") {
+      try {
+        const reg = await navigator.serviceWorker.register("sw.js", { updateViaCache:"none" });
+        reg.update();
+      } catch {}
+    }
   })();
 })();
 </script>
