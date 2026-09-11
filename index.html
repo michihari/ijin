@@ -106,6 +106,7 @@
   .chip.all{border-style:dashed}
 
   .list{margin:0;padding:0;list-style:none}
+  .list.no-when .entry{grid-template-columns:1fr}
   .entry{display:grid;grid-template-columns:128px 1fr;gap:0 28px;padding:28px 0;border-bottom:1px solid var(--rule);position:relative}
   .entry .when{color:var(--ai);line-height:1.4}
   .entry .when .year{font-size:30px;font-weight:500;letter-spacing:.04em;display:block}
@@ -119,10 +120,11 @@
   .entry .tag{font-size:12px;letter-spacing:.14em;color:var(--ai);border:1px solid var(--ai);border-radius:2px;padding:1px 8px;line-height:1.7}
   .entry .desc{margin:0;white-space:pre-wrap;word-break:break-word;max-width:44em}
   .entry .more{font-size:13px;color:var(--ai);text-decoration:underline;text-underline-offset:4px;margin-top:6px}
-  .entry .ops{position:absolute;right:0;top:28px;opacity:0;transition:opacity .15s}
-  .entry:hover .ops,.entry:focus-within .ops{opacity:1}
+  .entry .head{position:relative}
+  .entry .ops{margin-left:auto;padding-left:16px}
   .entry .ops button{font-size:12px;color:var(--nezu);letter-spacing:.1em;text-decoration:underline;text-underline-offset:4px}
-  @media (max-width:560px){.entry{grid-template-columns:1fr;gap:6px}.entry .ops{opacity:1;position:static;margin-top:8px}}
+  .list.tate .ops{margin:0;padding:0}
+  @media (max-width:560px){.entry{grid-template-columns:1fr;gap:6px}}
 
   .list.tate{writing-mode:vertical-rl;height:calc(100vh - 320px);min-height:440px;overflow-x:auto;overflow-y:hidden;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:0 8px;scrollbar-gutter:stable}
   .list.tate .entry{display:block;height:100%;padding:8px 28px;border-bottom:none;border-left:1px solid var(--rule)}
@@ -135,7 +137,7 @@
   .list.tate .tag{display:inline-block;margin-top:10px;padding:8px 1px}
   .list.tate .desc{max-width:none;max-height:100%;text-align:justify;margin-left:6px}
   .list.tate .more{display:block;margin-left:10px}
-  .list.tate .ops{position:static;opacity:1;display:block;margin-left:16px}
+  .list.tate .ops{display:block;margin-left:16px}
 
   .empty{padding:60px 0;color:var(--nezu);text-align:center;letter-spacing:.1em}
   .empty button{color:var(--ai);text-decoration:underline;text-underline-offset:4px}
@@ -452,7 +454,8 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     m = String(m);
     if (/schema cache|PGRST204/i.test(m)) return "表に足りない列があります。supabase-setup.sql をもう一度 SQL Editor で実行してください。";
     if (/does not exist|42P01/i.test(m)) return "ijin の表が見つかりません。supabase-setup.sql を SQL Editor で実行してください。";
-    if (/row-level security|42501/i.test(m)) return "書き込みが許可されていません。ログインし直すか、supabase-setup.sql の権限の部分をもう一度実行してください。";
+    if (/permission denied for (table|relation)/i.test(m)) return "表への権限が付いていません。supabase-setup.sql の「表そのものへの権限」の部分を実行してください。";
+    if (/row-level security|42501/i.test(m)) return "書き込みが許可されていません。ログインし直すか、supabase-setup.sql をもう一度実行してください。";
     if (/ijin_cat_check/i.test(m)) return "分野の名前が表の制約と合いません。";
     if (/JWT|expired|invalid token/i.test(m)) return "ログインの期限が切れています。ログインし直してください。";
     if (/did not match the expected pattern|Load failed|Failed to fetch|NetworkError|接続不能/i.test(m))
@@ -505,6 +508,7 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     renderFilters();
     const list = $("#list");
     list.classList.toggle("tate", dir === "tate");
+    list.classList.toggle("no-when", scope !== ALL);
     const fils = activeFilters();
     const items = data.entries.filter(e => scope === ALL ? fils.includes(e.cat) : e.cat === scope).sort(cmp);
     if (!items.length) {
@@ -515,23 +519,26 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
     }
     list.innerHTML = items.map(e => {
       const y = (e.bc ? "紀元前" : "") + num(e.year) + "年";
-      const md = e.month ? num(e.month)+"月"+(e.day ? num(e.day)+"日" : "") : "";
+      const md = e.month ? num(e.month)+"."+(e.day ? num(e.day) : "") : "";
       const died = e.dyear != null
-        ? "没 " + (e.dbc ? "紀元前" : "") + num(e.dyear) + "年" + (e.dmonth ? num(e.dmonth)+"月"+(e.dday ? num(e.dday)+"日" : "") : "")
+        ? "没 " + (e.dbc ? "前" : "") + num(e.dyear) + (e.dmonth ? "."+num(e.dmonth)+(e.dday ? "."+num(e.dday) : "") : "")
         : "";
       const clip = desc === "head" && !opened.has(e.id) && (e.desc||"").length > HEAD_LEN;
       const body = clip ? esc(e.desc.slice(0,HEAD_LEN)) + "…" : esc(e.desc||"");
       const more = desc === "head" && (e.desc||"").length > HEAD_LEN
         ? `<button class="more" data-act="toggle" data-id="${e.id}">${clip ? "続きを読む" : "冒頭のみに戻す"}</button>` : "";
-      const life = "（" + (e.bc ? "前" : "") + num(e.year) + "–" + (e.dyear != null ? (e.dbc ? "前" : "") + num(e.dyear) : "") + "）";
+      const ymd = (bc,y,m,d) => (bc ? "前" : "") + num(y) + (m ? "." + num(m) + (d ? "." + num(d) : "") : "");
+      const life = "（" + ymd(e.bc, e.year, e.month, e.day) + "–"
+        + (e.dyear != null ? ymd(e.dbc, e.dyear, e.dmonth, e.dday) : "") + "）";
       const ops = canEdit(e) ? `<div class="ops"><button data-act="edit" data-id="${e.id}">編集</button></div>` : "";
+
       return `<li class="entry" data-id="${e.id}">
-        <div class="when"><span class="year">${y}</span>${md?`<span class="md">${md}</span>`:""}${died?`<span class="died">${died}</span>`:""}</div>
+        ${scope===ALL?`<div class="when"><span class="year">${y}</span>${md?`<span class="md">${md}</span>`:""}${died?`<span class="died">${died}</span>`:""}</div>`:""}
         <div>
-          <div class="head"><h3 class="who">${esc(e.name)}</h3><span class="life">${life}</span>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}</div>
+          <div class="head"><h3 class="who">${esc(e.name)}</h3><span class="life">${life}</span>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}${ops}</div>
           <p class="desc">${body || '<span style="color:var(--nezu)">（説明文なし）</span>'}</p>
           ${more}
-        </div>${ops}
+        </div>
       </li>`;
     }).join("");
     if (dir === "tate") list.scrollLeft = 0;
@@ -585,9 +592,9 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
   function openPeek(id){
     const e = data.entries.find(x => x.id === id); if (!e) return;
     peekId = id;
-    const fmt = (bc,y,m,d) => (bc ? "紀元前" : "") + y + "年" + (m ? m + "月" + (d ? d + "日" : "") : "");
+    const fmt = (bc,y,m,d) => (bc ? "前" : "") + y + (m ? "." + m + (d ? "." + d : "") : "");
     $("#pYear").textContent = fmt(e.bc, e.year, e.month, e.day)
-      + (e.dyear != null ? "　—　" + fmt(e.dbc, e.dyear, e.dmonth, e.dday) : "");
+      + "–" + (e.dyear != null ? fmt(e.dbc, e.dyear, e.dmonth, e.dday) : "");
     $("#pCat").textContent = e.cat;
     $("#pName").textContent = e.name;
     $("#pDesc").textContent = e.desc || "（説明文なし）";
@@ -807,10 +814,17 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
         <code>SUPABASE_URL</code> と <code>SUPABASE_ANON_KEY</code> に Project URL と anon public key を書き入れてください。`;
     }
     if (configured) {
+      const where =
+        location.protocol === "file:" ? "ファイルを直接開いているため、外部との通信が許可されていません。" :
+        location.protocol !== "https:" && location.hostname !== "localhost" ? "https の場所で開かないと通信できません。" :
+        window.self !== window.top ? "プレビューの枠の中では外部との通信が遮断されます。" : "";
       try { await api("?select=id&limit=1"); }
       catch (e) {
         $("#setupNotice").classList.remove("hidden");
-        $("#setupNotice").textContent = "Supabase に接続できていません。" + explain(e.message);
+        $("#setupNotice").innerHTML = "Supabase に接続できていません。" +
+          esc(where || explain(e.message)) +
+          (where ? "公開したURL（https://…github.io/…）から開いてください。" : "") +
+          `<br><span style="color:var(--nezu);font-size:12.5px">詳細：${esc(e.message).slice(0,200)}</span>`;
       }
     }
     paintAuth();
