@@ -114,6 +114,8 @@
   .list.tate .when .died{margin:0 0 0 8px}
   .entry .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}
   .entry .who{margin:0;font-size:22px;font-weight:500;letter-spacing:.14em}
+  .entry .life{font-size:14px;color:var(--ink-soft);letter-spacing:.04em}
+  .list.tate .life{display:inline-block;margin-left:14px}
   .entry .tag{font-size:12px;letter-spacing:.14em;color:var(--ai);border:1px solid var(--ai);border-radius:2px;padding:1px 8px;line-height:1.7}
   .entry .desc{margin:0;white-space:pre-wrap;word-break:break-word;max-width:44em}
   .entry .more{font-size:13px;color:var(--ai);text-decoration:underline;text-underline-offset:4px;margin-top:6px}
@@ -521,11 +523,12 @@ const MASTER_EMAIL = "michihari.natori.note@gmail.com";
       const body = clip ? esc(e.desc.slice(0,HEAD_LEN)) + "…" : esc(e.desc||"");
       const more = desc === "head" && (e.desc||"").length > HEAD_LEN
         ? `<button class="more" data-act="toggle" data-id="${e.id}">${clip ? "続きを読む" : "冒頭のみに戻す"}</button>` : "";
+      const life = "（" + (e.bc ? "前" : "") + num(e.year) + "–" + (e.dyear != null ? (e.dbc ? "前" : "") + num(e.dyear) : "") + "）";
       const ops = canEdit(e) ? `<div class="ops"><button data-act="edit" data-id="${e.id}">編集</button></div>` : "";
       return `<li class="entry" data-id="${e.id}">
         <div class="when"><span class="year">${y}</span>${md?`<span class="md">${md}</span>`:""}${died?`<span class="died">${died}</span>`:""}</div>
         <div>
-          <div class="head"><h3 class="who">${esc(e.name)}</h3>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}</div>
+          <div class="head"><h3 class="who">${esc(e.name)}</h3><span class="life">${life}</span>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}</div>
           <p class="desc">${body || '<span style="color:var(--nezu)">（説明文なし）</span>'}</p>
           ${more}
         </div>${ops}
