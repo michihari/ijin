@@ -15,7 +15,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="偉人録">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://ldsdlaicexbtsocqalkp.supabase.co" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
   :root{
     --paper:#EEECE4;
@@ -102,6 +104,10 @@
   .seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
   .options{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:12px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
   .options .lbl{font-size:13px;color:var(--nezu);letter-spacing:.1em}
+  .searchbar{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule)}
+  .searchbar input{flex:1;min-width:0;border:none;border-bottom:1px solid var(--ink);background:transparent;padding:8px 2px;font-size:18px;border-radius:0;-webkit-appearance:none}
+  .searchbar .hit{font-size:13px;color:var(--nezu);letter-spacing:.1em;white-space:nowrap}
+  mark{background:none;color:var(--ai);border-bottom:1px solid var(--ai)}
   .filters{display:flex;flex-wrap:wrap;gap:7px;padding:14px 0;border-bottom:1px solid var(--rule)}
   .chip{border:1px solid var(--rule);border-radius:2px;padding:3px 11px;font-size:13px;letter-spacing:.08em;color:var(--nezu)}
   .chip[aria-pressed="true"]{border-color:var(--ai);color:var(--ai);background:#fff}
@@ -115,6 +121,14 @@
   .list.tate .life{display:inline-block;margin-left:14px}
   .entry .tag{font-size:12px;letter-spacing:.14em;color:var(--ai);border:1px solid var(--ai);border-radius:2px;padding:1px 8px;line-height:1.7}
   .entry .desc{margin:0;white-space:pre-wrap;word-break:break-word;max-width:44em}
+  [contenteditable]{cursor:text;outline:none;border-radius:2px;transition:background .15s,box-shadow .15s}
+  [contenteditable]:hover{background:rgba(255,255,255,.45)}
+  [contenteditable]:focus{background:#fff;box-shadow:0 0 0 1px var(--ai)}
+  .entry .desc[contenteditable]{padding:4px 6px;margin:-4px -6px}
+  .entry .desc[contenteditable]:empty::before{content:"（説明文を書く）";color:var(--nezu)}
+  .entry .who[contenteditable]{padding:0 4px;margin:0 -4px}
+  .list.tate .entry .desc[contenteditable]{padding:6px 4px;margin:-6px -4px}
+  .inline-hint{font-size:12px;color:var(--nezu);letter-spacing:.08em;margin-left:auto}
   .entry .more{font-size:13px;color:var(--ai);text-decoration:underline;text-underline-offset:4px;margin-top:6px}
   .entry .head{position:relative}
   .entry .ops{margin-left:auto;padding-left:16px}
@@ -168,6 +182,7 @@
       <nav class="nav" aria-label="表示">
         <button id="navAll">通覧</button>
         <button id="navMix">ミックス</button>
+        <button id="navSearch">検索</button>
       </nav>
     </div>
     <div class="toolbar">
@@ -227,6 +242,10 @@
       <h2><small id="catSub">時代順の記録</small><span id="catTitle"></span></h2>
       <button class="btn primary hidden" id="addBtn">人物を登録する</button>
     </div>
+    <div class="searchbar hidden" id="searchBar">
+      <input type="search" id="q" placeholder="名前・分野・説明文から探す" autocomplete="off" spellcheck="false">
+      <span class="hit" id="hit"></span>
+    </div>
     <div class="filters hidden" id="filters"></div>
     <div class="options">
       <span class="lbl">説明文</span>
@@ -239,6 +258,7 @@
         <button data-opt="dir" data-val="yoko">横書き</button>
         <button data-opt="dir" data-val="tate">縦書き</button>
       </div>
+      <span class="inline-hint hidden" id="inlineHint">名前や説明文に触れると、その場で書き直せます</span>
     </div>
     <ul class="list" id="list"></ul>
   </section>
@@ -333,7 +353,7 @@
 const SUPABASE_URL = "https://ldsdlaicexbtsocqalkp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmuZcV-uEyzUO8LgLEkzvA_5cJQnxHC";
 const MASTER_EMAIL = "michihari.natori.note@gmail.com";
-const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
+const BUILD = "v16";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
 
 (() => {
   const CATS = ["小説","俳句","哲学","詩","芸術","映画","音楽","料理","服飾","芸道","自然科学","社会科学"];
@@ -489,6 +509,14 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
   const cmp = (a,b) => { const A=skey(a), B=skey(b); for(let i=0;i<3;i++) if(A[i]!==B[i]) return A[i]-B[i]; return a.name.localeCompare(b.name,"ja"); };
   const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const num = n => `<span class="num">${n}</span>`;
+  const SEARCH = "__search__";
+  let terms = [];
+  function hl(t){
+    if (!terms.length) return t;
+    const re = new RegExp("(" + terms.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+    return t.replace(re, "<mark>$1</mark>");
+  }
+  const hits = e => terms.every(t => (e.name + " " + e.cat + " " + e.desc).toLowerCase().includes(t.toLowerCase()));
   const activeFilters = () => (data.settings.filters && data.settings.filters.length) ? data.settings.filters : CATS;
 
   function paintAuth(){
@@ -520,15 +548,26 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
       CATS.map(c => `<button class="chip" data-fil="${c}" aria-pressed="${!!act && act.includes(c)}">${c}</button>`).join("");
   }
   function renderList(){
+    if (document.activeElement?.isContentEditable) return;   // 書いている途中で消さない
     const { desc, dir } = data.settings;
+    $("#inlineHint").classList.toggle("hidden", !canWrite());
     document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", data.settings[b.dataset.opt] === b.dataset.val));
     renderFilters();
+    $("#searchBar").classList.toggle("hidden", scope !== SEARCH);
     const list = $("#list");
     list.classList.toggle("tate", dir === "tate");
     const fils = activeFilters();
-    const items = data.entries.filter(e => scope === ALL ? fils.includes(e.cat) : e.cat === scope).sort(cmp);
+    const wide = scope === ALL || scope === SEARCH;
+    const items = (scope === SEARCH ? (terms.length ? data.entries.filter(hits) : [])
+                 : scope === ALL    ? data.entries.filter(e => fils.includes(e.cat))
+                 :                    data.entries.filter(e => e.cat === scope)).sort(cmp);
+    if (scope === SEARCH) $("#hit").textContent = terms.length ? `${items.length}名` : "";
     if (!items.length) {
       list.classList.remove("tate");
+      if (scope === SEARCH) {
+        list.innerHTML = `<li class="empty">${terms.length ? "見つかりませんでした。" : "言葉を入れてください。名前でも、句の一節でも。"}</li>`;
+        return;
+      }
       const cta = canWrite() ? `<br><button data-act="add">人物を登録する</button>` : "";
       list.innerHTML = `<li class="empty">${scope===ALL && data.entries.length ? "選んだ分野には誰もいません。" : "まだ誰も記録されていません。"}${cta}</li>`;
       return;
@@ -541,12 +580,15 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
       const ymd = (bc,y,m,d) => (bc ? "前" : "") + num(y) + (m ? "." + num(m) + (d ? "." + num(d) : "") : "");
       const life = "（" + ymd(e.bc, e.year, e.month, e.day) + "–"
         + (e.dyear != null ? ymd(e.dbc, e.dyear, e.dmonth, e.dday) : "") + "）";
-      const ops = canEdit(e) ? `<div class="ops"><button data-act="edit" data-id="${e.id}">編集</button></div>` : "";
+      const ok = canEdit(e);
+      const ops = ok ? `<div class="ops"><button data-act="edit" data-id="${e.id}">編集</button></div>` : "";
+      const edName = ok ? ` contenteditable="true" data-field="name" data-id="${e.id}" spellcheck="false"` : "";
+      const edDesc = ok && !clip ? ` contenteditable="true" data-field="desc" data-id="${e.id}" spellcheck="false"` : "";
 
       return `<li class="entry" data-id="${e.id}">
         <div>
-          <div class="head"><h3 class="who">${esc(e.name)}</h3><span class="life">${life}</span>${scope===ALL?`<span class="tag">${esc(e.cat)}</span>`:""}${ops}</div>
-          <p class="desc">${body || '<span style="color:var(--nezu)">（説明文なし）</span>'}</p>
+          <div class="head"><h3 class="who"${edName}>${hl(esc(e.name))}</h3><span class="life">${life}</span>${wide?`<span class="tag">${esc(e.cat)}</span>`:""}${ops}</div>
+          <p class="desc"${edDesc}>${edDesc ? hl(body) : (hl(body) || '<span style="color:var(--nezu)">（説明文なし）</span>')}</p>
           ${more}
         </div>
       </li>`;
@@ -557,9 +599,10 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
     ["gate","catView","mixView","loginView"].forEach(id => $("#"+id).classList.toggle("hidden", id !== v));
     $("#navAll").setAttribute("aria-current", v === "catView" && scope === ALL ? "page" : "false");
     $("#navMix").setAttribute("aria-current", v === "mixView" ? "page" : "false");
+    $("#navSearch").setAttribute("aria-current", v === "catView" && scope === SEARCH ? "page" : "false");
     window.scrollTo(0,0);
   }
-  function showGate(){ scope = null; renderGate(); setView("gate"); }
+  function showGate(){ scope = null; terms = []; renderGate(); setView("gate"); }
   function repaint(){
     if (!$("#mixView").classList.contains("hidden")) renderMix();
     else if (scope) renderList();
@@ -567,14 +610,15 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
   }
   function showScope(s){
     scope = s;
-    $("#catTitle").textContent = s === ALL ? "全分野" : s;
-    $("#catSub").textContent = s === ALL ? "十二分野を通した時代順" : "時代順の記録";
+    if (s !== SEARCH) terms = [];   // 他の画面に移ったら強調を消す
+    $("#catTitle").textContent = s === ALL ? "全分野" : s === SEARCH ? "検索" : s;
+    $("#catSub").textContent = s === ALL ? "十二分野を通した時代順" : s === SEARCH ? "分野を問わず探す" : "時代順の記録";
     setView("catView"); renderList();
   }
 
   /* ---------- ミックス ---------- */
   const MIX_N = 10;
-  function showMix(){ scope = null; setView("mixView"); renderMix(); }
+  function showMix(){ scope = null; terms = []; setView("mixView"); renderMix(); }
   function renderMix(){
     const pond = $("#pond");
     if (!data.entries.length) { pond.innerHTML = `<div class="empty" style="padding-top:120px">まだ誰も記録されていません。</div>`; return; }
@@ -616,6 +660,11 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
   $("#pEdit").addEventListener("click", () => { peek.close(); openForm(peekId); });
   $("#remixBtn").addEventListener("click", renderMix);
   $("#navMix").addEventListener("click", showMix);
+  $("#navSearch").addEventListener("click", () => { showScope(SEARCH); $("#q").focus(); });
+  $("#q").addEventListener("input", () => {
+    terms = $("#q").value.trim().split(/[\s\u3000]+/).filter(Boolean);
+    opened.clear(); renderList();
+  });
   $("#navAll").addEventListener("click", () => showScope(ALL));
 
   /* ---------- 登録フォーム ---------- */
@@ -801,6 +850,46 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
   $("#diagClose").addEventListener("click", () => ddlg.close());
   $("#diagCopy").addEventListener("click", () => { navigator.clipboard?.writeText($("#diagOut").textContent); toast("コピーしました"); });
 
+  /* ---------- その場で書き直す ---------- */
+  const listEl = $("#list");
+  let before = null;
+  const readText = el => el.innerText.replace(/\r/g, "").replace(/\u00a0/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  listEl.addEventListener("focusin", ev => {
+    const el = ev.target.closest("[contenteditable]"); if (!el) return;
+    before = readText(el);
+    if (el.querySelector("mark")) el.textContent = before;   // 強調を外して素の文字にする
+  });
+  listEl.addEventListener("keydown", ev => {
+    const el = ev.target.closest("[contenteditable]"); if (!el) return;
+    if (ev.key === "Escape") { el.textContent = before; el.blur(); }
+    if (ev.key === "Enter" && el.dataset.field === "name") { ev.preventDefault(); el.blur(); }
+  });
+  listEl.addEventListener("paste", ev => {
+    const el = ev.target.closest("[contenteditable]"); if (!el) return;
+    ev.preventDefault();
+    const t = (ev.clipboardData || window.clipboardData).getData("text/plain");
+    document.execCommand("insertText", false, el.dataset.field === "name" ? t.replace(/\s+/g, " ") : t);
+  });
+  listEl.addEventListener("focusout", async ev => {
+    const el = ev.target.closest("[contenteditable]"); if (!el) return;
+    const { id, field } = el.dataset;
+    const e = data.entries.find(x => x.id === id); if (!e) return;
+    let v = readText(el);
+    if (field === "name") {
+      v = v.replace(/\s+/g, " ");
+      if (!v) { el.textContent = e.name; return toast("名前は空にできません"); }
+    }
+    if (v === (field === "name" ? e.name : e.desc)) return;
+    const next = { ...e, [field]: v };
+    if (configured) {
+      try { await sbUpdate(toRow(next)); }
+      catch (err) { el.textContent = field === "name" ? e.name : e.desc; return toast("保存できませんでした。" + explain(err.message)); }
+    }
+    Object.assign(e, next);
+    await saveLocal();
+    toast("保存しました");
+  });
+
   /* ---------- 操作 ---------- */
   $("#gateList").addEventListener("click", ev => { const b = ev.target.closest("button[data-cat]"); if (b) showScope(b.dataset.cat); });
   $("#home").addEventListener("click", showGate);
@@ -865,41 +954,45 @@ const BUILD = "v13";   // 画面右上に出ます。差し替えたのにここ
   let tt; function toast(m){ const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 3200); }
 
   /* ---------- 起動 ---------- */
+  // 方針：まず手元の控えで画面を出す。通信はそのあと裏で行い、届いたら静かに差し替える。
   (async () => {
     const saved = await lget(KEY);
     if (saved) { data.entries = saved.entries || []; Object.assign(data.settings, saved.settings || {}); }
-    if (configured) {
-      session = await lget(SKEY);
-      if (session) { await ensureFresh(); scheduleRefresh(); }
-      if (session) { try { await pull(); } catch { toast("記録を読み込めませんでした。この端末の控えを表示しています"); } }
-      else { data.entries = []; await saveLocal(); }
-    } else {
+    if (configured) session = await lget(SKEY);
+
+    // ここで待たずに描く
+    paintAuth();
+    if (configured && !session) openAuth(); else showGate();
+
+    if (!configured) {
       $("#setupNotice").classList.remove("hidden");
       $("#setupNotice").innerHTML = `いまは下書きの状態です。記録はこの端末の中だけに保存され、ログインもできません。<br>
         Supabase でプロジェクトを作り、<code>supabase-setup.sql</code> を SQL Editor で実行したうえで、このHTMLの先頭にある
         <code>SUPABASE_URL</code> と <code>SUPABASE_ANON_KEY</code> に Project URL と anon public key を書き入れてください。`;
+      return;
     }
-    if (configured) {
-      const where =
-        location.protocol === "file:" ? "ファイルを直接開いているため、外部との通信が許可されていません。" :
-        location.protocol !== "https:" && location.hostname !== "localhost" ? "https の場所で開かないと通信できません。" :
-        window.self !== window.top ? "プレビューの枠の中では外部との通信が遮断されます。" : "";
-      try { await api("?select=id&limit=1"); }
-      catch (e) {
+    if (!session) { data.entries = []; saveLocal(); return; }
+
+    // 以降は裏で。画面は既に使える。
+    (async () => {
+      try {
+        if (session.expires_at <= Math.floor(Date.now()/1000) + 60) {
+          if (!await refreshSession()) { paintAuth(); openAuth(); return; }
+        }
+        scheduleRefresh();
+        await pull();
+        paintAuth(); repaint();
+      } catch (e) {
+        const where =
+          location.protocol === "file:" ? "ファイルを直接開いているため、外部との通信が許可されていません。" :
+          location.protocol !== "https:" && location.hostname !== "localhost" ? "https の場所で開かないと通信できません。" :
+          window.self !== window.top ? "プレビューの枠の中では外部との通信が遮断されます。" : "";
         $("#setupNotice").classList.remove("hidden");
-        $("#setupNotice").innerHTML = "Supabase に接続できていません。" +
+        $("#setupNotice").innerHTML = "Supabase に接続できていません。この端末の控えを表示しています。" +
           esc(where || explain(e.message)) +
-          (where ? "公開したURL（https://…github.io/…）から開いてください。" : "") +
           `<br><span style="color:var(--nezu);font-size:12.5px">詳細：${esc(e.message).slice(0,200)}</span>`;
       }
-    }
-    paintAuth();
-    if (configured && !session) openAuth(); else showGate();
-    document.addEventListener("visibilitychange", async () => {
-      if (document.visibilityState !== "visible" || !session) return;
-      if (await ensureFresh()) { try { await pull(); repaint(); } catch {} }
-      else { paintAuth(); openAuth(); }
-    });
+    })();
     $("#build").textContent = BUILD;
     if ("serviceWorker" in navigator && location.protocol === "https:") {
       try {
