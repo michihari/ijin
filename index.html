@@ -86,15 +86,14 @@
   .peek .meta .y{font-size:26px;font-weight:500}
   .peek h3{font-size:26px;letter-spacing:.16em}
   .peek .desc{margin:0;white-space:pre-wrap;word-break:break-word;max-height:50vh;overflow:auto}
-  .gate ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--ink);border-left:1px solid var(--ink)}
+  .gate ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--ink);border-left:1px solid var(--ink)}
   .gate li{border-right:1px solid var(--ink);border-bottom:1px solid var(--ink)}
-  .gate li button{width:100%;height:100%;min-height:150px;padding:20px 16px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;text-align:left;transition:background .18s}
+  .gate li button{width:100%;height:100%;min-height:150px;padding:20px 14px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;text-align:left;transition:background .18s}
   .gate li button:hover{background:var(--paper-deep)}
   .gate .cat-name{writing-mode:vertical-rl;white-space:nowrap;font-size:26px;font-weight:500;letter-spacing:.3em;line-height:1;height:112px}
   .gate .cat-name.long{font-size:21px;letter-spacing:.1em}
   .gate .count{font-size:13px;color:var(--nezu);align-self:flex-end}
-  @media (max-width:760px){.gate ul{grid-template-columns:repeat(3,1fr)}}
-  @media (max-width:480px){.gate ul{grid-template-columns:repeat(2,1fr)}.gate li button{min-height:130px}}
+  @media (max-width:720px){.gate ul{grid-template-columns:repeat(2,1fr)}.gate li button{min-height:130px}}
 
   .cat-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:36px 0 18px}
   .cat-head h2{margin:0;font-size:38px;font-weight:500;letter-spacing:.25em;line-height:1.2}
@@ -353,10 +352,10 @@
 const SUPABASE_URL = "https://ldsdlaicexbtsocqalkp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmuZcV-uEyzUO8LgLEkzvA_5cJQnxHC";
 const MASTER_EMAIL = "michihari.natori.note@gmail.com";
-const BUILD = "v16";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
+const BUILD = "v17";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
 
 (() => {
-  const CATS = ["小説","俳句","哲学","詩","芸術","映画","音楽","料理","服飾","芸道","自然科学","社会科学"];
+  const CATS = ["小説","俳句","哲学","詩","戯曲","芸術","映画","音楽","料理","花","服飾","芸道","自然科学","社会科学"];
   const KEY = "ijin:data", SKEY = "ijin:session", ALL = "__all__", HEAD_LEN = 110;
   const scrub = v => String(v || "").replace(/[\s\u3000\u200b]+/g, "");
   const URL_ = scrub(SUPABASE_URL), KEY_ = scrub(SUPABASE_ANON_KEY);
@@ -491,7 +490,7 @@ const BUILD = "v16";   // 画面右上に出ます。差し替えたのにここ
     if (/does not exist|42P01/i.test(m)) return "ijin の表が見つかりません。supabase-setup.sql を SQL Editor で実行してください。";
     if (/permission denied for (table|relation)/i.test(m)) return "表への権限が付いていません。supabase-setup.sql の「表そのものへの権限」の部分を実行してください。";
     if (/row-level security|42501/i.test(m)) return "書き込みが許可されていません。ログインし直すか、supabase-setup.sql をもう一度実行してください。";
-    if (/ijin_cat_check/i.test(m)) return "分野の名前が表の制約と合いません。";
+    if (/ijin_cat_check/i.test(m)) return "この分野はSupabase側の表がまだ受け付けません。supabase-setup.sql をもう一度 SQL Editor で実行してください。";
     if (/JWT|expired|invalid token/i.test(m)) return "ログインの期限が切れています。ログインし直してください。";
     if (/did not match the expected pattern|Load failed|Failed to fetch|NetworkError|接続不能/i.test(m))
       return "Supabase に要求を送れませんでした。" + (w || "通信が遮断されているか、接続先のURLと鍵に余分な文字が混じっています。")
