@@ -86,13 +86,14 @@
   .peek .meta .y{font-size:26px;font-weight:500}
   .peek h3{font-size:26px;letter-spacing:.16em}
   .peek .desc{margin:0;white-space:pre-wrap;word-break:break-word;max-height:50vh;overflow:auto}
-  .gate ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(10,1fr);border-top:1px solid var(--ink);border-left:1px solid var(--ink)}
+  .gate ul{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(11,1fr);border-top:1px solid var(--ink);border-left:1px solid var(--ink)}
   .gate li{border-right:1px solid var(--ink);border-bottom:1px solid var(--ink)}
   .gate li button{width:100%;height:100%;min-height:150px;padding:20px 14px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;text-align:left;transition:background .18s}
   .gate li button:hover{background:var(--paper-deep)}
   .gate .cat-name{writing-mode:vertical-rl;white-space:nowrap;font-size:26px;font-weight:500;letter-spacing:.3em;line-height:1;height:112px}
   .gate .cat-name.long{font-size:21px;letter-spacing:.1em}
   .gate .cat-name.xlong{font-size:17px;letter-spacing:.04em}
+  .gate .cat-name.xxlong{font-size:13px;letter-spacing:0}
   .gate .count{font-size:13px;color:var(--nezu);align-self:flex-end}
   .reorder-bar{display:flex;justify-content:flex-end;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 12px}
   .reorder-hint{margin-right:auto;font-size:13px;color:var(--nezu);letter-spacing:.04em}
@@ -100,7 +101,7 @@
   .gate li.rr button{cursor:grab}
   .gate li.picked{background:#fff;outline:2px solid var(--ai);outline-offset:-3px}
   .gate li.over{background:var(--paper-deep)}
-  @media (max-width:900px){.gate ul{grid-template-columns:repeat(5,1fr)}}
+  @media (max-width:900px){.gate ul{grid-template-columns:repeat(6,1fr)}}
   @media (max-width:560px){.gate ul{grid-template-columns:repeat(2,1fr)}.gate li button{min-height:130px}}
 
   .cat-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:36px 0 18px}
@@ -365,10 +366,10 @@
 const SUPABASE_URL = "https://ldsdlaicexbtsocqalkp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmuZcV-uEyzUO8LgLEkzvA_5cJQnxHC";
 const MASTER_EMAIL = "michihari.natori.note@gmail.com";
-const BUILD = "v20";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
+const BUILD = "v22";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
 
 (() => {
-  const CATS = ["小説","俳句","哲学","詩","短歌","和歌","戯曲","芸術","映画","音楽","料理","花","服飾","芸道","自然科学","社会科学","経済界","政治家","宗教／神話","評論"];
+  const CATS = ["小説","俳句","哲学","評論","詩","芸術","社会科学","自然科学","政治家","経済界","音楽","宗教／神話","エッセイ","インフルエンサー","短歌","和歌","戯曲","映画","料理","花","服飾","芸道"];
   const KEY = "ijin:data", SKEY = "ijin:session", ALL = "__all__", HEAD_LEN = 110;
   const scrub = v => String(v || "").replace(/[\s\u3000\u200b]+/g, "");
   const URL_ = scrub(SUPABASE_URL), KEY_ = scrub(SUPABASE_ANON_KEY);
@@ -534,7 +535,14 @@ const BUILD = "v20";   // 画面右上に出ます。差し替えたのにここ
   let orderDirty = false, reorder = false, picked = null, pushTimer = null, dragCat = null;
   const orderedCats = () => {
     const o = [...new Set((Array.isArray(data.settings.order) ? data.settings.order : []).filter(c => CATS.includes(c)))];
-    return [...o, ...CATS.filter(c => !o.includes(c))];   // 新しい分野は末尾に
+    if (!o.length) return CATS.slice();
+    CATS.forEach((c, i) => {
+      if (o.includes(c)) return;
+      let at = 0;                                   // 既定の並びで直前にいる分野のあとに入れる
+      for (let k = i - 1; k >= 0; k--) { const j = o.indexOf(CATS[k]); if (j >= 0) { at = j + 1; break; } }
+      o.splice(at, 0, c);
+    });
+    return o;
   };
   function fillCatSelect(){ $("#fCat").innerHTML = orderedCats().map(c => `<option>${c}</option>`).join(""); }
   function moveCat(a, b){
@@ -591,7 +599,7 @@ const BUILD = "v20";   // 画面右上に出ます。差し替えたのにここ
     $("#gateList").innerHTML = orderedCats().map(c => {
       const n = data.entries.filter(e => e.cat === c).length;
       const cls = reorder ? ` class="rr${picked === c ? " picked" : ""}" draggable="true"` : "";
-      return `<li data-cat="${c}"${cls}><button data-cat="${c}"><span class="cat-name${c.length >= 5 ? " long xlong" : c.length >= 4 ? " long" : ""}">${c}</span><span class="count">${n ? n+"名" : "未登録"}</span></button></li>`;
+      return `<li data-cat="${c}"${cls}><button data-cat="${c}"><span class="cat-name${c.length >= 7 ? " long xlong xxlong" : c.length >= 5 ? " long xlong" : c.length >= 4 ? " long" : ""}">${c}</span><span class="count">${n ? n+"名" : "未登録"}</span></button></li>`;
     }).join("");
   }
   function renderFilters(){
