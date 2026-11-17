@@ -154,6 +154,8 @@
   .list.tate .more{display:block;margin-left:10px}
   .list.tate .ops{display:block;margin-left:16px}
 
+  .back-end{display:flex;justify-content:flex-start;margin:40px 0 0}
+  .back-end .btn{padding:10px 28px;letter-spacing:.14em}
   .empty{padding:60px 0;color:var(--nezu);text-align:center;letter-spacing:.1em}
   .empty button{color:var(--ai);text-decoration:underline;text-underline-offset:4px}
 
@@ -274,6 +276,7 @@
       <span class="inline-hint hidden" id="inlineHint">名前や説明文に触れると、その場で書き直せます</span>
     </div>
     <ul class="list" id="list"></ul>
+    <div class="back-end"><button class="btn quiet" id="backBtn">← 分野の一覧に戻る</button></div>
   </section>
 </div>
 
@@ -366,7 +369,7 @@
 const SUPABASE_URL = "https://ldsdlaicexbtsocqalkp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmuZcV-uEyzUO8LgLEkzvA_5cJQnxHC";
 const MASTER_EMAIL = "michihari.natori.note@gmail.com";
-const BUILD = "v22";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
+const BUILD = "v24";   // 画面右上に出ます。差し替えたのにここが変わらなければ、古い画面を見ています。
 
 (() => {
   const CATS = ["小説","俳句","哲学","評論","詩","芸術","社会科学","自然科学","政治家","経済界","音楽","宗教／神話","エッセイ","インフルエンサー","短歌","和歌","戯曲","映画","料理","花","服飾","芸道"];
@@ -723,6 +726,7 @@ const BUILD = "v22";   // 画面右上に出ます。差し替えたのにここ
   $("#pEdit").addEventListener("click", () => { peek.close(); openForm(peekId); });
   $("#remixBtn").addEventListener("click", renderMix);
   $("#navMix").addEventListener("click", showMix);
+  $("#backBtn").addEventListener("click", showGate);
   $("#navSearch").addEventListener("click", () => { showScope(SEARCH); $("#q").focus(); });
   $("#q").addEventListener("input", () => {
     terms = $("#q").value.trim().split(/[\s\u3000]+/).filter(Boolean);
